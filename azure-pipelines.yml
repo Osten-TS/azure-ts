@@ -17,6 +17,8 @@ steps:
   displayName: 'Run azure-trigger.ps1'
   inputs:
     filePath: '$(Build.SourcesDirectory)/azure-trigger.ps1'
+  env:
+    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
 - task: PublishTestResults@2
   displayName: 'Publish Testsigma results'
