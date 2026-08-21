@@ -1,0 +1,25 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'windows-latest'
+
+steps:
+- script: echo "Calling PowerShell Script of Testsigma"
+  displayName: 'Announce script run'
+
+- script: dir
+  displayName: 'List files (debug)'
+
+- task: PowerShell@2
+  displayName: 'Run azure-trigger.ps1'
+  inputs:
+    filePath: '$(Build.SourcesDirectory)/azure-trigger.ps1'
+
+- task: PublishTestResults@2
+  displayName: 'Publish Testsigma results'
+  inputs:
+    testResultFormat: JUnit
+    testResultsFiles: '**/*junit-report.xml'
