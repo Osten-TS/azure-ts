@@ -18,7 +18,7 @@ steps:
   inputs:
     filePath: '$(Build.SourcesDirectory)/azure-trigger.ps1'
   env:
-    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+    ADO_PAT_SECRET: $(AdoPat)
 
 - task: PublishTestResults@2
   displayName: 'Publish Testsigma results'
