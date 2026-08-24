@@ -56,7 +56,9 @@ function checkTestPlanRunStatus{
   for($i=0; $i -le $NO_OF_POLLS;$i++){
     get_status
     Write-Host "Execution Status before going for wait: $EXECUTION_STATUS ,Status_message:"($RUN_RESPONSE.message)
-    if ($EXECUTION_STATUS -eq "STATUS_IN_PROGRESS"){
+    # FIX (Bug 1): Testsigma returns STATUS_CREATED first, then STATUS_IN_PROGRESS, before finishing.
+    # Both must be treated as "still running", otherwise the script exits after the very first poll.
+    if ($EXECUTION_STATUS -eq "STATUS_IN_PROGRESS" -or $EXECUTION_STATUS -eq "STATUS_CREATED"){
       Write-Host "Sleep/Wait for $SLEEP_TIME seconds before next poll....."
       sleep $SLEEP_TIME
     }else{
@@ -111,6 +113,17 @@ function Update-AzureDevOpsTestPoint {
         Write-Host "Failed to update Azure DevOps Test Point."
         Write-Host "Status Code:" $_.Exception.Response.StatusCode.value__
         Write-Host $_.Exception.Message
+        # FIX (Bug 2): print Azure's actual error body so we can see WHY it's a 400, not just that it is one
+        if ($_.Exception.Response) {
+            try {
+                $stream = $_.Exception.Response.GetResponseStream()
+                $reader = New-Object System.IO.StreamReader($stream)
+                $errorBody = $reader.ReadToEnd()
+                Write-Host "Azure error details: $errorBody"
+            } catch {
+                Write-Host "Could not read Azure error response body."
+            }
+        }
     }
 }
 
