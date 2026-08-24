@@ -101,7 +101,11 @@ function Update-AzureDevOpsTestPoint {
             }
         }
     )
-    $body = $bodyArray | ConvertTo-Json -Depth 5
+
+    # FIX: use -InputObject, NOT the pipeline, so PowerShell keeps this as a JSON array
+    $body = ConvertTo-Json -InputObject $bodyArray -Depth 5
+
+    Write-Host "Request body being sent: $body"
 
     try {
         Invoke-RestMethod -Uri $adoUrl -Method PATCH `
@@ -111,18 +115,19 @@ function Update-AzureDevOpsTestPoint {
         Write-Host "Azure DevOps Test Point $ADO_POINT_ID updated to: $Outcome"
     } catch {
         Write-Host "Failed to update Azure DevOps Test Point."
-        Write-Host "Status Code:" $_.Exception.Response.StatusCode.value__
-        Write-Host $_.Exception.Message
-        # FIX (Bug 2): print Azure's actual error body so we can see WHY it's a 400, not just that it is one
         if ($_.Exception.Response) {
+            Write-Host "Status Code:" $_.Exception.Response.StatusCode.value__
             try {
                 $stream = $_.Exception.Response.GetResponseStream()
+                $stream.Position = 0
                 $reader = New-Object System.IO.StreamReader($stream)
-                $errorBody = $reader.ReadToEnd()
-                Write-Host "Azure error details: $errorBody"
+                $responseBody = $reader.ReadToEnd()
+                Write-Host "Azure error details: $responseBody"
             } catch {
-                Write-Host "Could not read Azure error response body."
+                Write-Host "(Could not read response body)"
             }
+        } else {
+            Write-Host $_.Exception.Message
         }
     }
 }
