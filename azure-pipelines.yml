@@ -18,6 +18,7 @@ steps:
   inputs:
     filePath: '$(Build.SourcesDirectory)/azure-trigger.ps1'
   env:
+    TESTSIGMA_API_KEY_SECRET: $(TestsigmaApiKey)
     ADO_PAT_SECRET: $(AdoPat)
 
 - task: PublishTestResults@2
