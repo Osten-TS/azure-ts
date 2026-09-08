@@ -151,8 +151,17 @@ function Resolve-TestCaseId {
     foreach ($rawCandidate in @($Name, $ClassName)) {
         if ([string]::IsNullOrWhiteSpace($rawCandidate)) { continue }
         $candidate = $rawCandidate.Trim()
-        $escaped = Escape-WiqlString $candidate
         Write-Host "  Looking up ADO Test Case for: [$candidate] (length $($candidate.Length))"
+
+        # Strategy 0: if the candidate is purely numeric, treat it as the literal
+        # ADO Test Case work item ID directly - no text matching needed. This
+        # covers the convention where Testsigma's classname holds the real ADO id.
+        if ($candidate -match '^\d+$') {
+            Write-Host "  -> numeric candidate, using directly as Test Case ID: $candidate"
+            return [int]$candidate
+        }
+
+        $escaped = Escape-WiqlString $candidate
 
         # Strategy 1: AutomatedTestName
         $atnBody = @{
