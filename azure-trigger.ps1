@@ -21,14 +21,13 @@
 ##########################################################################################################################################################
 <# START USER INPUTS#>
 
+$TESTSIGMA_API_KEY=$env:TESTSIGMA_API_KEY_SECRET
 $TESTSIGMA_TEST_PLAN_ID="5740"
 $REPORT_FILE_PATH="./junit-report.xml"
-$MAX_WAIT_TIME_FOR_SCRIPT_TO_EXIT=180
+$MAX_WAIT_TIME_FOR_SCRIPT_TO_EXIT=300
 
 $ADO_ORG="testsigma"
 $ADO_PROJECT="testsigma"
-
-$TESTSIGMA_API_KEY=$env:TESTSIGMA_API_KEY_SECRET
 $ADO_PAT=$env:ADO_PAT_SECRET
 $ADO_PLAN_ID=425
 $ADO_API_VERSION="7.1"
@@ -137,28 +136,53 @@ function Escape-WiqlString {
     return $Value -replace "'", "''"
 }
 
-# Resolve an ADO Test Case work item id by matching Automated Test Name exactly.
-# Tries the JUnit testcase 'name' first, then 'classname' as a fallback.
+# Resolve an ADO Test Case work item id for a JUnit test name/classname.
+# Tries, in order, per candidate string (Name then ClassName):
+#   1. Exact match on Microsoft.VSTS.TCM.AutomatedTestName
+#   2. Exact match on System.Title (guaranteed populated, unlike AutomatedTestName
+#      which has proven unreliable to set via the ADO UI's Associated Automation tab)
+# Logs which strategy matched (or that both missed) for every candidate, so
+# failures are visible directly in the pipeline log without a separate diagnostic run.
 function Resolve-TestCaseId {
     param([string]$Name, [string]$ClassName)
 
-    foreach ($candidate in @($Name, $ClassName)) {
-        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+    $wiqlUrl = "https://dev.azure.com/$ADO_ORG/$ADO_PROJECT/_apis/wit/wiql?api-version=$ADO_API_VERSION"
 
+    foreach ($rawCandidate in @($Name, $ClassName)) {
+        if ([string]::IsNullOrWhiteSpace($rawCandidate)) { continue }
+        $candidate = $rawCandidate.Trim()
         $escaped = Escape-WiqlString $candidate
-        $wiqlBody = @{
+        Write-Host "  Looking up ADO Test Case for: [$candidate] (length $($candidate.Length))"
+
+        # Strategy 1: AutomatedTestName
+        $atnBody = @{
             query = "SELECT [System.Id] FROM WorkItems WHERE [System.WorkItemType] = 'Test Case' AND [Microsoft.VSTS.TCM.AutomatedTestName] = '$escaped'"
         } | ConvertTo-Json
+        $atnResponse = Invoke-AdoRequest -Uri $wiqlUrl -Method Post -Body $atnBody
 
-        $wiqlUrl = "https://dev.azure.com/$ADO_ORG/$ADO_PROJECT/_apis/wit/wiql?api-version=$ADO_API_VERSION"
-        $wiqlResponse = Invoke-AdoRequest -Uri $wiqlUrl -Method Post -Body $wiqlBody
-
-        if ($wiqlResponse -and $wiqlResponse.workItems -and $wiqlResponse.workItems.Count -gt 0) {
-            if ($wiqlResponse.workItems.Count -gt 1) {
-                Write-Host "WARNING: '$candidate' matched $($wiqlResponse.workItems.Count) test cases - using the first one."
+        if ($atnResponse -and $atnResponse.workItems -and $atnResponse.workItems.Count -gt 0) {
+            if ($atnResponse.workItems.Count -gt 1) {
+                Write-Host "  WARNING: matched $($atnResponse.workItems.Count) test cases via AutomatedTestName - using the first."
             }
-            return $wiqlResponse.workItems[0].id
+            Write-Host "  -> matched via AutomatedTestName: Test Case $($atnResponse.workItems[0].id)"
+            return $atnResponse.workItems[0].id
         }
+
+        # Strategy 2: Title (fallback - always populated, unlike AutomatedTestName)
+        $titleBody = @{
+            query = "SELECT [System.Id] FROM WorkItems WHERE [System.WorkItemType] = 'Test Case' AND [System.Title] = '$escaped'"
+        } | ConvertTo-Json
+        $titleResponse = Invoke-AdoRequest -Uri $wiqlUrl -Method Post -Body $titleBody
+
+        if ($titleResponse -and $titleResponse.workItems -and $titleResponse.workItems.Count -gt 0) {
+            if ($titleResponse.workItems.Count -gt 1) {
+                Write-Host "  WARNING: matched $($titleResponse.workItems.Count) test cases via Title - using the first."
+            }
+            Write-Host "  -> matched via Title: Test Case $($titleResponse.workItems[0].id)"
+            return $titleResponse.workItems[0].id
+        }
+
+        Write-Host "  -> no match via AutomatedTestName or Title for '$candidate'"
     }
     return $null
 }
